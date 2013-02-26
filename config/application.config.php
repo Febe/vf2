@@ -29,9 +29,9 @@ if (APPLICATION_ENV == 'development') {
 if ($localModules = getenv('VUFIND_LOCAL_MODULES')) {
     $localModules = array_map('trim', explode(',', $localModules));
     foreach ($localModules as $current) {
-        if (!empty($current)) {
+        if (!empty($current) && !in_array($current, $config['modules'])) {
             $config['modules'][] = $current;
         }
-    }
+    }    
 }
 return $config;
