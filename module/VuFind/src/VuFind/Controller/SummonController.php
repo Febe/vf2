@@ -46,8 +46,19 @@ class SummonController extends AbstractSearch
     public function __construct()
     {
         $this->searchClassId = 'Summon';
-        $this->useResultScroller = false;
         parent::__construct();
+    }
+
+    /**
+     * Is the result scroller active?
+     *
+     * @return bool
+     */
+    protected function resultScrollerActive()
+    {
+        $config = $this->getServiceLocator()->get('VuFind\Config')->get('Summon');
+        return (isset($config->Record->next_prev_navigation)
+            && $config->Record->next_prev_navigation);
     }
 
     /**
@@ -127,25 +138,22 @@ class SummonController extends AbstractSearch
         $cache = $this->getServiceLocator()->get('VuFind\CacheManager')
             ->getCache('object');
         if (!($results = $cache->getItem('summonSearchAdvancedFacets'))) {
-            $sm = $this->getSearchManager();
-            $params = $sm->setSearchClassId('Summon')->getParams();
+            $results = $this->getResultsManager()->get('Summon');
+            $params = $results->getParams();
             $params->addFacet('Language,or,1,20');
             $params->addFacet('ContentType,or,1,20', 'Format');
 
             // We only care about facet lists, so don't get any results:
             $params->setLimit(0);
 
-            $results = $sm->setSearchClassId('Summon')->getResults($params);
             // force processing for cache
             $results->getResults();
 
-            // Temporarily remove the service manager so we can cache the
-            // results (otherwise we'll get errors about serializing closures):
-            $results->unsetServiceLocator();
             $cache->setItem('summonSearchAdvancedFacets', $results);
         }
 
-        // Restore the real service locator to the object:
+        // Restore the real service locator to the object (it was lost during
+        // serialization):
         $results->restoreServiceLocator($this->getServiceLocator());
         return $results;
     }

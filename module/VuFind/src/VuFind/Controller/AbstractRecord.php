@@ -62,13 +62,6 @@ class AbstractRecord extends AbstractBase
     protected $searchClassId = 'Solr';
 
     /**
-     * Should we use the result scroller?
-     *
-     * @var bool
-     */
-    protected $useResultScroller = true;
-
-    /**
      * Should we log statistics?
      *
      * @var bool
@@ -187,7 +180,9 @@ class AbstractRecord extends AbstractBase
 
         // Save tags, if any:
         if ($this->params()->fromPost('submit')) {
-            $driver->addTags($user, $this->params()->fromPost('tag'));
+            $tags = $this->params()->fromPost('tag');
+            $tagParser = $this->getServiceLocator()->get('VuFind\Tags');
+            $driver->addTags($user, $tagParser->parse($tags));
             return $this->redirectToRecord();
         }
 
@@ -509,10 +504,9 @@ class AbstractRecord extends AbstractBase
         // common scenario) and the GET parameters (a fallback used by some
         // legacy routes).
         if (!is_object($this->driver)) {
-            $sm = $this->getServiceLocator()->get('SearchManager');
-            $results = $sm->setSearchClassId($this->searchClassId)->getResults();
-            $this->driver = $results->getRecord(
-                $this->params()->fromRoute('id', $this->params()->fromQuery('id'))
+            $this->driver = $this->getRecordLoader()->load(
+                $this->params()->fromRoute('id', $this->params()->fromQuery('id')),
+                $this->searchClassId
             );
         }
         return $this->driver;
@@ -563,6 +557,17 @@ class AbstractRecord extends AbstractBase
     }
 
     /**
+     * Is the result scroller active?
+     *
+     * @return bool
+     */
+    protected function resultScrollerActive()
+    {
+        // Disabled by default:
+        return false;
+    }
+
+    /**
      * Display a particular tab.
      *
      * @param string $tab  Name of tab to display
@@ -591,7 +596,7 @@ class AbstractRecord extends AbstractBase
         $view->defaultTab = strtolower($this->defaultTab);
 
         // Set up next/previous record links (if appropriate)
-        if ($this->useResultScroller) {
+        if ($this->resultScrollerActive()) {
             $driver = $this->loadRecord();
             $view->scrollData = $this->resultScroller()->getScrollData($driver);
         }

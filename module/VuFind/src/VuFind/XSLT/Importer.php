@@ -27,8 +27,8 @@
  */
 namespace VuFind\XSLT;
 use DOMDocument, VuFind\Config\Locator as ConfigLocator,
-    VuFind\Connection\Manager as ConnectionManager,
     XSLTProcessor, Zend\Console\Console,
+    VuFindSearch\Backend\Solr\Document\RawXMLDocument,
     Zend\ServiceManager\ServiceLocatorAwareInterface,
     Zend\ServiceManager\ServiceLocatorInterface;
 
@@ -69,8 +69,8 @@ class Importer implements ServiceLocatorAwareInterface
 
         // Save the results (or just display them, if in test mode):
         if (!$testMode) {
-            $solr = ConnectionManager::connectToIndex($index);
-            $result = $solr->saveRecord($xml);
+            $solr = $this->getServiceLocator()->get('VuFind\Solr\Writer');
+            $result = $solr->save($index, new RawXMLDocument($xml));
         } else {
             Console::write($xml . "\n");
         }
@@ -170,7 +170,7 @@ class Importer implements ServiceLocatorAwareInterface
                     $parts = explode('\\', $class);
                     $class = preg_replace('/[^A-Za-z0-9_]/', '', array_pop($parts));
                     $ns = implode('\\', $parts);
-                    eval("class $class extends \\$ns\\$class { }");
+                    class_alias("$ns\\$class", $class);
                 }
                 $methods = get_class_methods($class);
                 if (method_exists($class, 'setServiceLocator')) {

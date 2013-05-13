@@ -77,14 +77,12 @@ class AjaxController extends AbstractBase
         // Set the output mode to JSON:
         $this->outputMode = 'json';
 
-        // Call the method specified by the 'method' parameter as long as it is
-        // valid and will not result in an infinite loop!
-        $method = $this->params()->fromQuery('method');
-        if ($method != 'init' && $method != '__construct' && $method != 'output'
-            && method_exists($this, $method)
-        ) {
+        // Call the method specified by the 'method' parameter; append Ajax to
+        // the end to avoid access to arbitrary inappropriate methods.
+        $callback = array($this, $this->params()->fromQuery('method') . 'Ajax');
+        if (is_callable($callback)) {
             try {
-                return $this->$method();
+                return call_user_func($callback);
             } catch (\Exception $e) {
                 $debugMsg = ('development' == APPLICATION_ENV)
                     ? ': ' . $e->getMessage() : '';
@@ -111,13 +109,12 @@ class AjaxController extends AbstractBase
         // Process recommendations -- for now, we assume Solr-based search objects,
         // since deferred recommendations work best for modules that don't care about
         // the details of the search objects anyway:
-        $sm = $this->getSearchManager();
         $rm = $this->getServiceLocator()->get('VuFind\RecommendPluginManager');
         $module = $rm->get($this->params()->fromQuery('mod'));
         $module->setConfig($this->params()->fromQuery('params'));
-        $params = $sm->setSearchClassId('Solr')->getParams();
+        $results = $this->getResultsManager()->get('Solr');
+        $params = $results->getParams();
         $module->init($params, $this->getRequest()->getQuery());
-        $results = $sm->setSearchClassId('Solr')->getResults($params);
         $module->process($results);
 
         // Set headers:
@@ -139,7 +136,7 @@ class AjaxController extends AbstractBase
      *
      * @return mixed
      */
-    public function getLightbox()
+    protected function getLightboxAjax()
     {
         // Turn layouts on for this action since we want to render the
         // page inside a lightbox:
@@ -187,7 +184,7 @@ class AjaxController extends AbstractBase
      * @author Chris Delis <cedelis@uillinois.edu>
      * @author Tuan Nguyen <tuan@yorku.ca>
      */
-    public function getItemStatuses()
+    protected function getItemStatusesAjax()
     {
         $this->writeSession();  // avoid session write timing bug
         $catalog = $this->getILS();
@@ -451,7 +448,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    protected function getSaveStatuses()
+    protected function getSaveStatusesAjax()
     {
         $this->writeSession();  // avoid session write timing bug
         // check if user is logged in
@@ -560,7 +557,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    protected function getSalt()
+    protected function getSaltAjax()
     {
         return $this->output($this->generateSalt(), self::STATUS_OK);
     }
@@ -570,7 +567,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    protected function login()
+    protected function loginAjax()
     {
         // Fetch Salt
         $salt = $this->generateSalt();
@@ -602,7 +599,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    protected function tagRecord()
+    protected function tagRecordAjax()
     {
         $user = $this->getUser();
         if ($user === false) {
@@ -618,8 +615,9 @@ class AjaxController extends AbstractBase
                 $this->params()->fromPost('source', 'VuFind')
             );
             $tag = $this->params()->fromPost('tag', '');
+            $tagParser = $this->getServiceLocator()->get('VuFind\Tags');
             if (strlen($tag) > 0) { // don't add empty tags
-                $driver->addTags($user, $tag);
+                $driver->addTags($user, $tagParser->parse($tag));
             }
         } catch (\Exception $e) {
             return $this->output(
@@ -636,7 +634,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    protected function getRecordTags()
+    protected function getRecordTagsAjax()
     {
         // Retrieve from database:
         $tagTable = $this->getTable('Tags');
@@ -671,13 +669,12 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    public function getMapData($fields = array('long_lat'))
+    protected function getMapDataAjax($fields = array('long_lat'))
     {
         $this->writeSession();  // avoid session write timing bug
-        $sm = $this->getSearchManager();
-        $params = $sm->setSearchClassId('Solr')->getParams();
+        $results = $this->getResultsManager()->get('Solr');
+        $params = $results->getParams();
         $params->initFromRequest($this->getRequest()->getQuery());
-        $results = $sm->setSearchClassId('Solr')->getResults($params);
 
         $facets = $results->getFullFieldFacets($fields, false);
 
@@ -715,10 +712,9 @@ class AjaxController extends AbstractBase
         // Set layout to render the page inside a lightbox:
         $this->layout()->setTemplate('layout/lightbox');
 
-        $sm = $this->getSearchManager();
-        $params = $sm->setSearchClassId('Solr')->getParams();
+        $results = $this->getResultsManager()->get('Solr');
+        $params = $results->getParams();
         $params->initFromRequest($this->getRequest()->getQuery());
-        $results = $sm->setSearchClassId('Solr')->getResults($params);
 
         return $this->createViewModel(
             array(
@@ -740,16 +736,17 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    public function getVisData($fields = array('publishDate'))
+    protected function getVisDataAjax($fields = array('publishDate'))
     {
         $this->writeSession();  // avoid session write timing bug
-        $sm = $this->getSearchManager();
-        $params = $sm->setSearchClassId('Solr')->getParams();
+        $results = $this->getResultsManager()->get('Solr');
+        $params = $results->getParams();
         $params->initFromRequest($this->getRequest()->getQuery());
         foreach ($this->params()->fromQuery('hf', array()) as $hf) {
             $params->getOptions()->addHiddenFilter($hf);
         }
-        $results = $sm->setSearchClassId('Solr')->getResults($params);
+        $params->getOptions()->disableHighlighting();
+        $params->getOptions()->spellcheckEnabled(false);
         $filters = $params->getFilters();
         $dateFacets = $this->params()->fromQuery('facetFields');
         $dateFacets = empty($dateFacets) ? array() : explode(':', $dateFacets);
@@ -832,7 +829,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    public function saveRecord()
+    protected function saveRecordAjax()
     {
         $user = $this->getUser();
         if (!$user) {
@@ -855,7 +852,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    public function bulkSave()
+    protected function bulkSaveAjax()
     {
         // Without IDs, we can't continue
         $ids = $this->params()->fromPost('ids', array());
@@ -897,7 +894,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    public function addList()
+    protected function addListAjax()
     {
         $user = $this->getUser();
 
@@ -931,7 +928,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    public function getACSuggestions()
+    protected function getACSuggestionsAjax()
     {
         $this->writeSession();  // avoid session write timing bug
         $query = $this->getRequest()->getQuery();
@@ -947,7 +944,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    public function smsRecord()
+    protected function smsRecordAjax()
     {
         $this->writeSession();  // avoid session write timing bug
         // Attempt to send the email:
@@ -979,7 +976,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    public function emailRecord()
+    protected function emailRecordAjax()
     {
         $this->writeSession();  // avoid session write timing bug
 
@@ -1020,7 +1017,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    public function emailSearch()
+    protected function emailSearchAjax()
     {
         $this->writeSession();  // avoid session write timing bug
 
@@ -1065,7 +1062,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    public function checkRequestIsValid()
+    protected function checkRequestIsValidAjax()
     {
         $this->writeSession();  // avoid session write timing bug
         $id = $this->params()->fromQuery('id');
@@ -1108,7 +1105,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    public function commentRecord()
+    protected function commentRecordAjax()
     {
         $user = $this->getUser();
         if ($user === false) {
@@ -1140,7 +1137,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    public function deleteRecordComment()
+    protected function deleteRecordCommentAjax()
     {
         $user = $this->getUser();
         if ($user === false) {
@@ -1166,7 +1163,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    public function getRecordCommentsAsHTML()
+    protected function getRecordCommentsAsHTMLAjax()
     {
         $driver = $this->getRecordLoader()->load(
             $this->params()->fromQuery('id'),
@@ -1182,7 +1179,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    protected function deleteFavorites()
+    protected function deleteFavoritesAjax()
     {
         $user = $this->getUser();
         if ($user === false) {
@@ -1214,7 +1211,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    protected function removeItemsCart()
+    protected function removeItemsCartAjax()
     {
         // Without IDs, we can't continue
         $ids = $this->params()->fromPost('ids');
@@ -1233,7 +1230,7 @@ class AjaxController extends AbstractBase
      *
      * @return \Zend\Http\Response
      */
-    protected function exportFavorites()
+    protected function exportFavoritesAjax()
     {
         $format = $this->params()->fromPost('format');
         $export = $this->getServiceLocator()->get('VuFind\Export');
@@ -1260,7 +1257,7 @@ class AjaxController extends AbstractBase
      * @return \Zend\Http\Response
      * @author Graham Seaman <Graham.Seaman@rhul.ac.uk>
      */
-    protected function getResolverLinks()
+    protected function getResolverLinksAjax()
     {
         $this->writeSession();  // avoid session write timing bug
         $openUrl = $this->params()->fromQuery('openurl', '');
@@ -1323,5 +1320,15 @@ class AjaxController extends AbstractBase
 
         // output HTML encoded in JSON object
         return $this->output($html, self::STATUS_OK);
+    }
+
+    /**
+     * Convenience method for accessing results
+     *
+     * @return \VuFind\Search\Results\PluginManager
+     */
+    protected function getResultsManager()
+    {
+        return $this->getServiceLocator()->get('VuFind\SearchResultsPluginManager');
     }
 }

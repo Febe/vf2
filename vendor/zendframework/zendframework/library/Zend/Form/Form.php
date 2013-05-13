@@ -272,7 +272,9 @@ class Form extends Fieldset implements FormInterface
     public function bindValues(array $values = array())
     {
         if (!is_object($this->object)) {
-            return;
+            if ( $this->baseFieldset === null || $this->baseFieldset->allowValueBinding() == false ) {
+                return;
+            }
         }
         if (!$this->hasValidated() && !empty($values)) {
             $this->setData($values);
@@ -343,9 +345,9 @@ class Form extends Fieldset implements FormInterface
             throw new Exception\InvalidArgumentException(sprintf(
                 '%s expects the flag to be one of %s::%s or %s::%s',
                 __METHOD__,
-                get_called_class(),
+                get_class($this),
                 'BIND_ON_VALIDATE',
-                get_called_class(),
+                get_class($this),
                 'BIND_MANUAL'
             ));
         }
@@ -441,9 +443,10 @@ class Form extends Fieldset implements FormInterface
         $filter->setData($this->data);
         $filter->setValidationGroup(InputFilterInterface::VALIDATE_ALL);
 
-        if ($this->validationGroup !== null) {
-            $this->prepareValidationGroup($this, $this->data, $this->validationGroup);
-            $filter->setValidationGroup($this->validationGroup);
+        $validationGroup = $this->getValidationGroup();
+        if ($validationGroup !== null) {
+            $this->prepareValidationGroup($this, $this->data, $validationGroup);
+            $filter->setValidationGroup($validationGroup);
         }
 
         $this->isValid = $result = $filter->isValid();
@@ -530,6 +533,16 @@ class Form extends Fieldset implements FormInterface
 
         $this->validationGroup = $arg;
         return $this;
+    }
+
+    /**
+     * Retrieve the current validation group, if any
+     *
+     * @return null|array
+     */
+    public function getValidationGroup()
+    {
+        return $this->validationGroup;
     }
 
     /**

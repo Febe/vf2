@@ -386,11 +386,13 @@ class MyResearchController extends AbstractBase
     protected function processEditSubmit($user, $driver, $listID)
     {
         $lists = $this->params()->fromPost('lists');
+        $tagParser = $this->getServiceLocator()->get('VuFind\Tags');
         foreach ($lists as $list) {
+            $tags = $this->params()->fromPost('tags'.$list);
             $driver->saveToFavorites(
                 array(
                     'list'  => $list,
-                    'mytags'  => $this->params()->fromPost('tags'.$list),
+                    'mytags'  => $tagParser->parse($tags),
                     'notes' => $this->params()->fromPost('notes'.$list)
                 ),
                 $user
@@ -495,15 +497,10 @@ class MyResearchController extends AbstractBase
         } else {
             $url = $this->url()->fromRoute('userList', array('id' => $listID));
         }
-        $this->getRequest()->getQuery()->set('confirmAction', $url);
-        $this->getRequest()->getQuery()->set('cancelAction', $url);
-        $this->getRequest()->getQuery()->set(
-            'extraFields', array('delete' => $id, 'source' => $source)
+        return $this->confirm(
+            'confirm_delete_brief', $url, $url, 'confirm_delete',
+            array('delete' => $id, 'source' => $source)
         );
-        $this->getRequest()->getQuery()
-            ->set('confirmTitle', 'confirm_delete_brief');
-        $this->getRequest()->getQuery()->set('confirmMessage', "confirm_delete");
-        return $this->forwardTo('MyResearch', 'Confirm');
     }
 
     /**
@@ -536,8 +533,9 @@ class MyResearchController extends AbstractBase
 
         // If we got this far, we just need to display the favorites:
         try {
-            $sm = $this->getSearchManager();
-            $params = $sm->setSearchClassId('Favorites')->getParams();
+            $results = $this->getServiceLocator()
+                ->get('VuFind\SearchResultsPluginManager')->get('Favorites');
+            $params = $results->getParams();
             $params->setAuthManager($this->getAuthManager());
 
             // We want to merge together GET, POST and route parameters to
@@ -550,7 +548,6 @@ class MyResearchController extends AbstractBase
                 )
             );
 
-            $results = $sm->setSearchClassId('Favorites')->getResults($params);
             $results->performAndProcessSearch();
             return $this->createViewModel(
                 array('params' => $params, 'results' => $results)
@@ -652,24 +649,6 @@ class MyResearchController extends AbstractBase
     }
 
     /**
-     * Takes params from the request and uses them to display a confirmation box
-     *
-     * @return mixed
-     */
-    public function confirmAction()
-    {
-        return $this->createViewModel(
-            array(
-                'title' => $this->params()->fromQuery('confirmTitle'),
-                'message' => $this->params()->fromQuery('confirmMessage'),
-                'confirm' => $this->params()->fromQuery('confirmAction'),
-                'cancel' => $this->params()->fromQuery('cancelAction'),
-                'extras' => $this->params()->fromQuery('extraFields')
-            )
-        );
-    }
-
-    /**
      * Creates a confirmation box to delete or not delete the current list
      *
      * @return mixed
@@ -708,21 +687,12 @@ class MyResearchController extends AbstractBase
         }
 
         // If we got this far, we must display a confirmation message:
-        $this->getRequest()->getQuery()->set(
-            'confirmAction', $this->url()->fromRoute('myresearch-deletelist')
+        return $this->confirm(
+            'confirm_delete_list_brief',
+            $this->url()->fromRoute('myresearch-deletelist'),
+            $this->url()->fromRoute('userList', array('id' => $listID)),
+            'confirm_delete_list_text', array('listID' => $listID)
         );
-        $this->getRequest()->getQuery()->set(
-            'cancelAction',
-            $this->url()->fromRoute('userList', array('id' => $listID))
-        );
-        $this->getRequest()->getQuery()->set(
-            'extraFields', array('listID' => $listID)
-        );
-        $this->getRequest()->getQuery()
-            ->set('confirmTitle', 'confirm_delete_list_brief');
-        $this->getRequest()->getQuery()
-            ->set('confirmMessage', 'confirm_delete_list_text');
-        return $this->forwardTo('MyResearch', 'Confirm');
     }
 
     /**
@@ -739,8 +709,8 @@ class MyResearchController extends AbstractBase
             if (!isset($current['id'])) {
                 throw new RecordMissingException();
             }
-            $record = $this->getSearchManager()->setSearchClassId('Solr')
-                ->getResults()->getRecord($current['id']);
+            $record = $this->getServiceLocator()->get('VuFind\RecordLoader')
+                ->load($current['id']);
         } catch (RecordMissingException $e) {
             $factory = $this->getServiceLocator()
                 ->get('VuFind\RecordDriverPluginManager');
@@ -748,7 +718,7 @@ class MyResearchController extends AbstractBase
             $record->setRawData(
                 array('id' => isset($current['id']) ? $current['id'] : null)
             );
-            $record->setResourceSource('VuFind');
+            $record->setSourceIdentifier('Solr');
         }
         $record->setExtraDetail('ils_details', $current);
         return $record;
@@ -886,8 +856,8 @@ class MyResearchController extends AbstractBase
                 if (!isset($row['id']) || empty($row['id'])) {
                     throw new \Exception();
                 }
-                $record = $this->getSearchManager()->setSearchClassId('Solr')
-                    ->getResults()->getRecord($row['id']);
+                $record = $this->getServiceLocator()->get('VuFind\RecordLoader')
+                    ->load($row['id']);
                 $row['title'] = $record->getShortTitle();
             } catch (\Exception $e) {
                 if (!isset($row['title'])) {
