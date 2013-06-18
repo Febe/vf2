@@ -27,9 +27,9 @@
  * @link     http://vufind.org   Main Site
  */
 
-namespace VuFindTest\Search\Solr\V3;
+namespace VuFindTest\Search\Solr\V4;
 
-use VuFind\Search\Solr\V3\ErrorListener;
+use VuFind\Search\Solr\V4\ErrorListener;
 
 use VuFindSearch\Backend\Exception\HttpErrorException;
 
@@ -58,8 +58,8 @@ class ErrorListenerTest extends TestCase
      */
     public function testDetectParseError()
     {
-        $response = $this->createResponse('solr3-parse-error');
-        $backend  = $this->getMockForAbstractClass('VuFindSearch\Backend\BackendInterface');
+        $response  = $this->createResponse('solr4-parse-error');
+        $backend   = $this->getMockForAbstractClass('VuFindSearch\Backend\BackendInterface');
 
         $exception = HttpErrorException::createFromResponse($response);
         $params    = array('backend_instance' => $backend);
@@ -76,7 +76,7 @@ class ErrorListenerTest extends TestCase
      */
     public function testDetectUndefinedFieldError()
     {
-        $response = $this->createResponse('solr3-undefined-field-error');
+        $response = $this->createResponse('solr4-undefined-field-error');
         $backend  = $this->getMockForAbstractClass('VuFindSearch\Backend\BackendInterface');
 
         $exception = HttpErrorException::createFromResponse($response);

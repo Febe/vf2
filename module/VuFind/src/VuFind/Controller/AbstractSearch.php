@@ -132,7 +132,7 @@ class AbstractSearch extends AbstractBase
         $userId = $user ? $user->id : false;
         if ($search->session_id == $sessId || $search->user_id == $userId) {
             // They do, deminify it to a new object.
-            $minSO = unserialize($search->search_object);
+            $minSO = $search->getSearchObject();
             $savedSearch = $minSO->deminify($this->getResultsManager());
 
             // Now redirect to the URL associated with the saved search; this
@@ -234,17 +234,21 @@ class AbstractSearch extends AbstractBase
             if ($this->resultScrollerActive()) {
                 $this->resultScroller()->init($results);
             }
-        } catch (\VuFindSearch\Backend\Exception\RequestParseErrorException $e) {
-            // If it's a parse error or the user specified an invalid field, we
-            // should display an appropriate message:
-            $view->parseError = true;
+        } catch (\VuFindSearch\Backend\Exception\BackendException $e) {
+            if ($e->hasTag('VuFind\Search\ParserError')) {
+                // If it's a parse error or the user specified an invalid field, we
+                // should display an appropriate message:
+                $view->parseError = true;
 
-            // We need to create and process an "empty results" object to
-            // ensure that recommendation modules and templates behave
-            // properly when displaying the error message.
-            $view->results = $this->getResultsManager()->get('EmptySet');
-            $view->results->setParams($params);
-            $view->results->performAndProcessSearch();
+                // We need to create and process an "empty results" object to
+                // ensure that recommendation modules and templates behave
+                // properly when displaying the error message.
+                $view->results = $this->getResultsManager()->get('EmptySet');
+                $view->results->setParams($params);
+                $view->results->performAndProcessSearch();
+            } else {
+                throw $e;
+            }
         }
         // Save statistics:
         if ($this->logStatistics) {
@@ -253,7 +257,9 @@ class AbstractSearch extends AbstractBase
         }
 
         // Special case: If we're in RSS view, we need to render differently:
-        if ($view->results->getParams()->getView() == 'rss') {
+        if (isset($view->results)
+            && $view->results->getParams()->getView() == 'rss'
+        ) {
             $response = $this->getResponse();
             $response->getHeaders()->addHeaderLine('Content-type', 'text/xml');
             $feed = $this->getViewRenderer()->plugin('resultfeed');
@@ -322,7 +328,7 @@ class AbstractSearch extends AbstractBase
         }
 
         // Restore the full search object:
-        $minSO = unserialize($search->search_object);
+        $minSO = $search->getSearchObject();
         $savedSearch = $minSO->deminify($this->getResultsManager());
 
         // Fail if this is not the right type of search:
