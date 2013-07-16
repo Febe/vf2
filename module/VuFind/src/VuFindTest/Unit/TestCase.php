@@ -118,6 +118,7 @@ abstract class TestCase extends \PHPUnit_Framework_TestCase
             array(
                 'factories' => array(
                     'Solr' => 'VuFind\Search\Factory\SolrDefaultBackendFactory',
+                    'SolrAuth' => 'VuFind\Search\Factory\SolrAuthBackendFactory',
                 )
             )
         );
@@ -244,5 +245,16 @@ abstract class TestCase extends \PHPUnit_Framework_TestCase
             $sm->setService('VuFind\AuthPluginManager', $authManager);
         }
         return $sm->get('VuFind\AuthPluginManager');
+    }
+
+    /**
+     * Is this test running in a continuous integration context?
+     *
+     * @return bool
+     */
+    public function continuousIntegrationRunning()
+    {
+        // We'll assume that if the CI Solr PID is present, then CI is active:
+        return file_exists(__DIR__ . '/../../../../../local/vufindtest.pid');
     }
 }

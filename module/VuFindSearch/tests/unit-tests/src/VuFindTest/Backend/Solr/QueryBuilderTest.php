@@ -164,27 +164,61 @@ class QueryBuilderTest extends PHPUnit_Framework_TestCase
     }
 
     /**
-     * Test parseRange functionality.
+     * Test generation with a query handler
      *
      * @return void
      */
-    public function testParseRange()
+    public function testQueryHandler()
     {
-        $this->markTestSkipped();
-        $qb = new QueryBuilder();
+        // Set up an array of expected inputs and outputs:
+        // @codingStandardsIgnoreStart
+        $tests = array(
+            array('this?', '((this?) OR (this\?))'),// trailing question mark
+        );
+        // @codingStandardsIgnoreEnd
 
-        // basic range test:
-        $result = $qb->parseRange("[1 TO 100]");
-        $this->assertEquals('1', $result['from']);
-        $this->assertEquals('100', $result['to']);
+        $qb = new QueryBuilder(
+            array(
+                'test' => array()
+            )
+        );
+        foreach ($tests as $test) {
+            list($input, $output) = $test;
+            $q = new Query($input, 'test');
+            $response = $qb->build($q);
+            $processedQ = $response->get('q');
+            $this->assertEquals($output, $processedQ[0]);
+        }
+    }
 
-        // test whitespace handling:
-        $result = $qb->parseRange("[1      TO     100]");
-        $this->assertEquals('1', $result['from']);
-        $this->assertEquals('100', $result['to']);
+    /**
+     * Test generation with highlighting
+     *
+     * @return void
+     */
+    public function testHighlighting()
+    {
+        $qb = new QueryBuilder(
+            array(
+                'test' => array(
+                    'DismaxFields' => array('test1'),
+                    'DismaxParams' => array(array('bq', 'boost'))
+                )
+            )
+        );
 
-        // test invalid ranges:
-        $this->assertFalse($qb->parseRange('1 TO 100'));
-        $this->assertFalse($qb->parseRange('[not a range to me]'));
+        $q = new Query('*:*', 'test');
+
+        // No hl.q if highlighting query disabled:
+        $qb->setCreateHighlightingQuery(false);
+        $response = $qb->build($q);
+        $hlQ = $response->get('hl.q');
+        $this->assertEquals(null, $hlQ[0]);
+
+        // hl.q if highlighting query enabled:
+        $qb->setCreateHighlightingQuery(true);
+        $response = $qb->build($q);
+        $hlQ = $response->get('hl.q');
+        $this->assertEquals('*:*', $hlQ[0]);
     }
 }

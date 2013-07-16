@@ -48,7 +48,7 @@ use VuFindSearch\ParamBag;
  * @license  http://opensource.org/licenses/gpl-2.0.php GNU General Public License
  * @link     http://vufind.org
  */
-class QueryBuilder
+class QueryBuilder implements QueryBuilderInterface
 {
 
     /**
@@ -75,16 +75,23 @@ class QueryBuilder
     /**
      * Force ranges to uppercase?
      *
-     * @var boolean
+     * @var bool
      */
     public $caseSensitiveRanges = true;
 
     /**
      * Force boolean operators to uppercase?
      *
-     * @var boolean
+     * @var bool
      */
     public $caseSensitiveBooleans = true;
+
+    /**
+     * Should we create the hl.q parameter when appropriate?
+     *
+     * @var bool
+     */
+    public $createHighlightingQuery = false;
 
     /**
      * Constructor.
@@ -106,10 +113,6 @@ class QueryBuilder
      * @param AbstractQuery $query User query
      *
      * @return ParamBag
-     *
-     * @todo Review usage of filters
-     * @todo Review usage of facets
-     * @todo Implement hightlighting
      */
     public function build(AbstractQuery $query)
     {
@@ -125,19 +128,17 @@ class QueryBuilder
         $params  = new ParamBag();
 
         if ($this->containsAdvancedLuceneSyntax($string)) {
-
             if ($handler) {
-                if ($params->get('hl')
-                    && array_intersect($params->get('hl'), array('true', 'on'))
-                ) {
-                    $params->set(
-                        'hl.q',
-                        $this->createAdvancedInnerSearchString($string, $handler)
-                    );
-                }
                 $string = $this->createAdvancedInnerSearchString($string, $handler);
                 if ($handler->hasDismax()) {
+                    $oldString = $string;
                     $string = $handler->createBoostQueryString($string);
+
+                    // If a boost was added, we don't want to highlight based on
+                    // the boost query, so we should use the non-boosted version:
+                    if ($this->createHighlightingQuery && $oldString != $string) {
+                        $params->set('hl.q', $oldString);
+                    }
                 }
             }
         } else {
@@ -162,11 +163,25 @@ class QueryBuilder
     }
 
     /**
+     * Control whether or not the QueryBuilder should create an hl.q parameter
+     * when the main query includes clauses that should not be factored into
+     * highlighting. (Turned off by default).
+     *
+     * @param bool $enable Should highlighting query generation be enabled?
+     *
+     * @return void
+     */
+    public function setCreateHighlightingQuery($enable)
+    {
+        $this->createHighlightingQuery = $enable;
+    }
+
+    /**
      * Return true if the search string contains advanced Lucene syntax.
      *
      * @param string $searchString Search string
      *
-     * @return boolean
+     * @return bool
      *
      * @todo Maybe factor out to dedicated UserQueryAnalyzer
      */
@@ -377,13 +392,13 @@ class QueryBuilder
         // If the query ends in a non-escaped question mark, the user may not really
         // intend to use the question mark as a wildcard -- let's account for that
         // possibility
-        if (substr($query, -1) == '?' && substr($query, -2) != '\?') {
+        if (substr($string, -1) == '?' && substr($string, -2) != '\?') {
             // Make sure all question marks are properly escaped (first unescape
             // any that are already escaped to prevent double-escapes, then escape
             // all of them):
             $strippedQuery
-                = str_replace('?', '\?', str_replace('\?', '?', $query));
-            $query = "({$query}) OR (" . $strippedQuery . ")";
+                = str_replace('?', '\?', str_replace('\?', '?', $string));
+            $string = "({$string}) OR (" . $strippedQuery . ")";
         }
 
         return $handler
@@ -618,27 +633,4 @@ class QueryBuilder
             return $open . trim($start) . ' TO ' . trim($end) . $close;
         }
     }
-
-    /**
-     * Return from and to values of SOLR range.
-     *
-     * Returns false if the search string does not contain a range. Otherwise
-     * it returns an associative array with the keys `from', and `to'
-     * referring to the lower and upper bound of the range.
-     *
-     * @param string $string Search string
-     *
-     * @return array|false
-     *
-     * @todo This function seems to be unused
-     */
-    public function parseRange($string)
-    {
-        $regEx = '/\[([^\]]+)\s+TO\s+([^\]]+)\]/';
-        if (!preg_match($regEx, $string, $matches)) {
-            return false;
-        }
-        return array('from' => trim($matches[1]), 'to' => trim($matches[2]));
-    }
-
 }
